@@ -1,0 +1,62 @@
+#!/usr/bin/python
+import sys 
+import time 
+import json 
+import socket
+import select
+import threading
+import configparser
+from Serwer import *
+from datetime import datetime
+
+
+class Main(Daemon):
+    def run(self):
+        state, self.host, self.port, self.timeout,self.max_connections, debug = load_config('/home/balalaika/Dokumenty/okrag_i_iksik/Serwer/config.ini')
+        if state == 'ok':
+            self.log.debug("Loaded configuration")
+        else:
+            self.log.critical("Failed in loading configuration, terminating")
+            return 1
+        self.log.setlog(debug)
+        self.log.debug("Starting SSDP service")
+        ssdp = Ssdp_Client(current_ip=self.host, current_port=self.port)
+        self.log.debug("Starting server kolko-i-krzyzyk")
+        ServerSocket = socket.socket(family = socket.AF_INET, type = socket.SOCK_STREAM) 
+        ServerSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            ServerSocket.bind((self.host, self.port))
+        except socket.error as e:
+            print(str(e))
+        
+        ServerSocket.listen(self.max_connections)
+        self.log.info("Server kolko-i-krzyzyk started")
+        self.log.debug("Starting Queue_handler and initializing Client")
+        queue = Queue_Clients(self.log)
+        while True:
+            client, address = ServerSocket.accept()
+            self.log.info(address[0] + ":" + str(address[1]) + " connected")
+            client = Client(client, self.log)
+            queue.queue_add(client)
+            time.sleep(self.timeout) #do not delete in dev - resources!
+        ServerSocket.close() 
+
+ 
+if __name__ == "__main__":
+    daemon = Main('/tmp/kolko-i-krzyzyk.pid')
+    if len(sys.argv) == 2:
+        if 'start' == sys.argv[1]:
+            daemon.start()
+        elif 'stop' == sys.argv[1]:
+            daemon.stop()
+        elif 'restart' == sys.argv[1]:
+            daemon.restart()
+        elif 'status' == sys.argv[1]:
+            daemon.status()
+        else:
+            print("Unknown command")
+            sys.exit(2)
+        sys.exit(0)
+    else:
+        print("usage: {0} start|stop|restart|status".format(sys.argv[0]))
+        sys.exit(2)
