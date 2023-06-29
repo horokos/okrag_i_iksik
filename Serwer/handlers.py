@@ -7,18 +7,8 @@ from random import randint
 from threading import Thread
 
 
-class Hi_Handler(Thread):
-    def __init__(self, function, socket, address):
-        Thread.__init__(self, daemon = True)
-        self.function = function
-        self.socket = socket
-        self.address = address
-
-    def run(self):
-        self.function(self.socket, self.address)
-
-
 class Game(Thread):
+    """Class responsible for game thread"""
     def __init__(self, client1, client2, log, queue):
         Thread.__init__(self, daemon = True)
         self.client1 = client1
@@ -34,10 +24,16 @@ class Game(Thread):
         self.turn = randint(0,1)
         self.start()
     
+    def killthread(self):
+        raise Exception
+
     def hello_game(self):
         try:
-            self.client1.socket.send(self.client1.XorO.encode("UTF-8"))
-            self.client2.socket.send(self.client2.XorO.encode("UTF-8"))
+            self.client1.socket.send(self.client1.XorO.encode("UTF-8")+self.client2.name.encode("UTF-8"))
+            self.client2.socket.send(self.client2.XorO.encode("UTF-8")+self.client1.name.encode("UTF-8"))
+            #recv OK
+            self.client1.socket.recv(2048).decode()
+            self.client2.socket.recv(2048).decode()
         except:
             self.log.error("Couldn't send message terminating game for player: {0} and player: {1}".format(self.player1.name, self.player2.name))
             self.end_game()
@@ -49,57 +45,35 @@ class Game(Thread):
         else:
             self.client1.XorO = "X"
             self.client2.XorO = "O"
+    
+    def end_game(self):
+        self.send_grid(self.client1, 'endgame')
+        self.send_grid(self.client2, 'endgame')
+        return 0        
 
     def end_win(self, player):
-        player.score += 1
-        message = ['win', player.score]
-        try:
-            message = json.dumps(message)
-            player.socket.send(message.encode("UTF-8"))
-            self.queue.queue_add(player)
-            self.is_end = 1
-        except:
-            pass
+        self.send_grid(player, 'win')
+        player.disconnect()
+        return 0
     
     def end_lose(self, player):
-        message = ['lose', player.score]
-        try:
-            message = json.dumps(message)
-            player.socket.send(message.encode("UTF-8"))
-            self.queue.queue_add(player)
-            self.is_end = 1
-        except:
-            pass
+        print("LOSE")
+        self.send_grid(player, 'fail')
+        player.disconnect()
+        return 0
 
-    def send_grid(self, player):
+    def send_grid(self, player, state):
         try:
-            message = json.dumps(self.grid)
+            message = json.dumps([self.grid, str(state)])
             player.socket.send(message.encode("UTF-8"))
             return 0
         except:
             self.log.error("Couldn't send message terminating game for player: {0} and player: {1}".format(self.player1.name, self.player2.name))
-            self.end_game()
             return 1
 
-    def end_game(self):
-        message = ['endgame']
-        message = json.dumps(message)
-        try:
-            message = ['endgame', self.player1.score]
-            message = json.dumps(message)
-            self.player1.socket.send(message.encode("UTF-8"))
-
-        except:
-            pass
-        try:
-            message = ['endgame', self.player1.score]
-            message = json.dumps(message)
-            self.player2.socket.send(message.encode("UTF-8"))
-        except:
-            pass
-        self.queue.queue_add(self.player1)
-        self.queue.queue_add(self.player2)
-        self.is_end = 1
+    def draw(self):
+        self.send_grid(self.client1, 'draw')
+        self.send_grid(self.client2, 'draw')
         return 0
     
     def field_used(self, fields):
@@ -127,14 +101,16 @@ class Game(Thread):
         else:
             self.player1 = self.client2
             self.player2 = self.client1
+
         for i in range(9):
-            #PLAYER1
-            #send grid
-            if self.send_grid(self.player1):
+            ############PLAYER1############
+            #send grid to all
+            if self.send_grid(self.player1, 'play'):
                 break
-            if self.send_grid(self.player2):
+            if self.send_grid(self.player2, 'play'):
                 break
-            #receive field eg.: [0,1]
+
+            #receive field player 1
             try:
                 message = self.player1.socket.recv(2048).decode()
                 field = json.loads(message)
@@ -142,22 +118,25 @@ class Game(Thread):
                     raise Exception
             except:
                 self.log.error("Couldn't receive or parse message terminating game for player: {0} and player: {1}".format(self.player1.name, self.player2.name))
-                self.end_game()
+                self.send_grid(self.player1, 'endgame')
+                self.send_grid(self.player2, 'endgame')
                 break
+
+            #parse fields player1
             field = [int(field[0]), int(field[1])]
             if self.field_used(field):
                 #update grid
                 self.grid[field[0]][field[1]] = self.player1.XorO
-                #print(self.grid)
                 if self.check_end():
                     break
             #send grid
-            if self.send_grid(self.player1):
+            if self.send_grid(self.player1, 'play'):
                 break
-            if self.send_grid(self.player2):
+            if self.send_grid(self.player2, 'play'):
                 break
-            #PLAYER2
-            #receive field eg.: [0,1]
+
+            ############PLAYER2############
+            #receive field player 2
             try:
                 message = self.player2.socket.recv(2048).decode()
                 field = json.loads(message)
@@ -165,22 +144,29 @@ class Game(Thread):
                     raise Exception
             except:
                 self.log.error("Couldn't receive or parse message terminating game for player: {0} and player: {1}".format(self.player1.name, self.player2.name))
-                self.end_game()
+                self.send_grid(self.player1, 'endgame')
+                self.send_grid(self.player2, 'endgame')
                 break
+
             field = [int(field[0]), int(field[1])]
             if self.field_used(field):
                 #update grid
                 self.grid[field[0]][field[1]] = self.player2.XorO
-                #print(self.grid)
                 if self.check_end():
                     break
-        self.log.debug("End of game for player: {0} score: {2} and player: {1} score: {3}".format(self.player1.name, self.player2.name, self.player1.score, self.player2.score))
-        
+        self.log.debug("End of game for player: {0} and player: {1}".format(self.player1.name, self.player2.name))
+        try:
+            self.client1.disconnect()
+        except:
+            pass
+        try:
+            self.client2.disconnect()
+        except:
+            pass
+        self.killthread()
+
     def check_end(self):
-        """TRZEBA SPRAWDZIC"""
-        if None not in sum(self.grid, []):
-            self.end_game()
-            return 1
+        """Check if game is over"""
         for row in self.grid:
             if set(row) == {'O'}:
                 self.end_win(self.player1)
@@ -213,15 +199,19 @@ class Game(Thread):
             self.end_win(self.player2)
             self.end_lose(self.player1)
             return 1
-    
+        if None not in sum(self.grid, []):
+            self.draw()
+            return 1
+        
     def run(self):
-        time.sleep(5)
+        time.sleep(3)
         self.setup_clients()
         self.hello_game()
         self.turns()
 
 
 class Queue_Clients(Thread):
+    """Thread calass responsible for managing connected clients and starting a game """
     def __init__(self, log):
         Thread.__init__(self, daemon = True)
         self.log = log
@@ -267,9 +257,8 @@ class Queue_Clients(Thread):
             try:
                 rs, _, _ = select.select([i.socket], [], [], 0.01)
                 if len(rs) != 0:
-                    #print(rs)
                     self.log.debug(rs)
-                    i.disconnected()
+                    i.disconnect()
                     to_delete.append(i)
             except:
                 self.log.warning("Non existing connection {0} skipping".format(i.socket))
@@ -284,16 +273,17 @@ class Queue_Clients(Thread):
         while 1:
             self.clean()
             self.queue_show()
+            self.clean()
             self.pairing()
-            self.del_game()
             time.sleep(1)
+            self.del_game()
 
     def run(self):
         self.queue_funct()
 
  
 class Ssdp_Client(Thread):
-    """Server to listen """
+    """Server to listen for incoming requests"""
     def __init__(self, current_ip='127.0.0.1', current_port='1900', server_name='kolko-i-krzyzyk'):
         Thread.__init__(self, daemon = True)
         self.current_ip = current_ip
@@ -333,12 +323,13 @@ class Ssdp_Client(Thread):
 
 
 class Client(Thread):
+    """Class responsible for client thread"""
     def __init__(self, socket, log):
         Thread.__init__(self, daemon = True)
         self.socket = socket
         self.name = None
         self.XorO = None
-        self.score = 0
+        self.score = "draw"
         self.disconnected = 0
         self.id = randint(1000,9999)
         self.gra = None
@@ -348,16 +339,7 @@ class Client(Thread):
     def set_name(self, name):
         self.name = name
     
-    def set_fig(self, XorO):
-        self.XorO = XorO
-    
-    def add_score(self, score):
-        self.score += int(score)
-    
-    def clean_score(self):
-        self.score = 0
-    
-    def disconnected(self):
+    def disconnect(self):
         self.disconnected = 1
     
     def name_sanitycheck(self, name):

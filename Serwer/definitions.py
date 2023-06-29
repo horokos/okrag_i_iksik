@@ -1,6 +1,15 @@
+import os
 import configparser
 from time import sleep
 
+
+def find_files(filename, search_path):
+   """Locate file in directory"""
+   result = []
+   for root, _, files in os.walk(search_path):
+      if filename in files:
+         result.append(os.path.join(root, filename))
+   return result
 
 def load_config(config_path='./Serwer/config.ini'):
     """Load server variables from config.ini"""
