@@ -10,7 +10,7 @@ class Input:
         self.y = y
         self.width = width
         self.height = height
-        self.font = pg.font.SysFont('Arial', 40)
+        self.font = pg.font.Font('Rubik-VariableFont_wght.ttf', 40)
         self.text_surface = self.font.render(self.text, True, 'black')
         self.surface = pg.Surface((self.width, self.height))
         self.bg_color = 'white'
@@ -27,7 +27,8 @@ class Input:
             if event.key == pg.K_BACKSPACE:
                 self.text = self.text[:-1]
             elif event.key == pg.K_RETURN:
-                self.target(self.text)
+                if self.text:
+                    self.target(self.text)
             elif len(self.text)<11:
                 self.text += event.unicode
             self.text_surface = self.font.render(self.text, True, 'black')

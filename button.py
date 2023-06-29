@@ -6,7 +6,7 @@ class Button:
         self.clickable = clickable
         self.target = target
         self.screen = screen
-        self.font = pg.font.SysFont('Arial', 40)
+        self.font = pg.font.SysFont('Rubik-VariableFont_wght.ttf', 40)
         self.text = self.font.render(text, True, 'black')
         self.surface = pg.Surface((width, height))
         self.bg_color = 'white'

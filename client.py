@@ -2,6 +2,7 @@ import socket
 import time
 import json
 import struct
+from copy import deepcopy
 from threading import Thread
 
 
@@ -61,21 +62,16 @@ class ServiceListen(Thread):
         self.discover_services()
 
 
-class Client():
-    def __init__(self, name):
+class Client(Thread):
+    def __init__(self, onlineGame, name):
+        Thread.__init__(self, daemon=True)
         self.name = name
+        self.onlineGame = onlineGame
         self.score = 0
         self.XorO = None
         self.ip = ""
         self.port = 0
-    
-    def multiple_message_clean_go_queue(self, strr):
-        strr = str(strr)
-        if '["endgame", 1]' in strr and ('X' in strr or 'O' in strr):
-            self.client.send("UPS")
-            self.client.recv(2048).decode("UTF-8")
-            return 2
-
+        self.start()
 
     def set_ip_port(self):
         listen = ServiceListen()
@@ -88,37 +84,44 @@ class Client():
         self.ip = str(listen.ip)
         self.port = int(listen.port)
     
-    def message_type(self, message):
+    def message_sanitycheck(self, message):
         message = json.loads(message)
-        if isinstance(message, list) and len(message) == 3:
+        if isinstance(message, list) and len(message) == 2:
+            state = message[1]
+            grid = message[0]
+        else:
+            return ["error"]
+        #check grid
+        if isinstance(grid, list) and len(grid) == 3:
             try:
                 for i in range(3):
                     for j in range(3):
-                        if message[i][j] in [None, "X", "O"]:
-                            print("mt - grid")
-                            return "grid"
+                        if grid[i][j] not in [None, "X", "O"]:
+                            return ["error"]
             except:
-                return "error"
-        if isinstance(message, list) and len(message) == 2:
-            if message[0] == "win" or message[0] == "endgame" or message[0] == "lose":
-                return "end"
-            else:
-                return "error"
-        return "error"
+                return ["error"]
+        #check state
+        if state not in [ "play", "endgame", "draw", "win", "fail"]:
+            return ["error"]
+        return [state, grid]
     
     def connect(self):
         self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM,)
         self.client.connect((self.ip, self.port))
+        self.client.settimeout(0.1)
         #send client_hello - wait for server to start to listen - serwer queue time to wait equals 1s - because of resources
         time.sleep(1)
         try:
             self.client.send("client_hello".encode("UTF-8"))
             #recv server_hello
             while 1:
-                mess = self.client.recv(2048).decode("UTF-8")
-                print(mess)
-                if mess != '':
-                    break
+                try:
+                    mess = self.client.recv(2048).decode("UTF-8")
+                    print(mess)
+                    if mess != '':
+                        break
+                except socket.timeout:
+                    pass
             self.client.send(self.name.encode("UTF-8"))
             return 1
         except:
@@ -128,50 +131,65 @@ class Client():
     
     def recv_grid(self):
         try:
-            while 1:
-                mess = self.client.recv(2048).decode("UTF-8")
-                print(mess)
-                if mess != '':
-                    break
-            if self.message_type(mess) == "grid":
-                grid = json.loads(mess)
-                #show grid start --- can be deleted - HIERONIM
-                print(grid) #[[None, None, None], [None, None, None], [None, "X", "O"]]
-                for i in range(3):
-                    for j in range(3):
-                        print(grid[i][j], end=" ")
-                    print("")
-                #show grid stop --- can be deleted - merge with GUI
-                return 0
-            elif self.message_type(mess) == "end":
-                message = json.loads(mess)
-                if message[0] == "win":
-                    self.score = message[1]
-                    print(self.score) #HIERONIM
-                    print("win!")#HIERONIM
+            r = 1
+            while r:
+                if not self.connected:
                     return 2
-                if message[0] == "lose":
-                    self.score = message[1]
-                    print(self.score)#HIERONIM
-                    print("lose:<")#HIERONIM
-                    return 2
-                if message[0] == "endgame":
-                    self.score = message[1]
-                    print(self.score)#HIERONIM
-                    print("endofgame")#HIERONIM
-                    return 2
-            elif self.message_type(mess) == "error":
+                try:
+                    mess = self.client.recv(2048).decode("UTF-8")
+                    print(mess)
+                    if mess != '':
+                        r = 0
+                except socket.timeout:
+                    pass
+            stategrid = self.message_sanitycheck(mess)
+            if stategrid != ["error"]:
+                state = stategrid[0]
+                grid = stategrid[1]
+                #show grid start 
+                self.onlineGame.grid = deepcopy(grid)
+                self.grid = deepcopy(grid)
+                """                print(grid) 
+                                for i in range(3):
+                                    for j in range(3):
+                                        print(grid[i][j], end=" ")
+                                    print("")"""
+
+                if state == "play":
+                    print(state)
+                    return 3
+                elif state == "win":
+                    print("win!")
+                    self.onlineGame.go_endScreen('Wygrywasz!')
+                    return 4
+                elif state == "fail":
+                    print("fail:<")
+                    self.onlineGame.go_endScreen('Przegrywasz!')
+                    return 4
+                elif state == "draw":
+                    print(state)
+                    self.onlineGame.go_endScreen('Remisujesz!')
+                    return 4
+                elif state == "endgame":
+                    print(state)
+                    self.onlineGame.go_endScreen('Przeciwnik stchórzył!')
+                    return 1
+            else:
                 print("error")
                 self.client.close()
-                return 1
+                return 0
         except:
-            print("Error in reciving grid")
-            return 1
+            print("Error in reciving state and grid")
+            return 0
     
     def send_info(self):
         #choosing field
-        choose = input("Podaj 'kolumne wiersz' od 0-2:\n")#HIERONIM
-        message = choose.split(" ")#HIERONIM można usunąć niech w messages zostanie lista[współrzędna_x, współrzędna_y]
+        while self.grid == self.onlineGame.grid:
+            if not self.connected:
+                return 2
+            time.sleep(0.1)
+        message = self.onlineGame.last_move
+        #choose = input("Podaj 'kolumne wiersz' od 0-2:\n")
         print(message) #[1,1]
         message = json.dumps(message)
         try:
@@ -184,52 +202,90 @@ class Client():
     def game(self):
         self.XorO = None
         try:
-            while 1:
-                mess = self.client.recv(2048).decode()
-                print(mess)
-                if mess != '':
-                    break
-            if mess == "X" or mess == "O":
-                self.XorO = mess
+            r = 1
+            while r:
+                if not self.connected:
+                    return 2
+                try:
+                    mess = self.client.recv(2048).decode()
+                    print(mess)
+                    if mess != '':
+                        r = 0
+                except socket.timeout as e:
+                    pass
+            #recv figure and name
+            if mess[0] == "X" or mess[0] == "O":
+                self.XorO = mess[0]
+                self.oponent = mess[1:]
+                self.onlineGame.XorO = self.XorO
+                self.onlineGame.opponent_name = mess[1:]
+                self.onlineGame.go_play()
             else:
                 print("Undefined option ...stopping client")
+                return 1
+            
+            #send OK - synchronize
+            self.client.send("OK".encode("UTF-8"))
+
             #for player with X
             if self.XorO == "X":
-                self.recv_grid()
-            for round in range(10): #not 9 because sb can win in 10th round
                 grid = self.recv_grid()
-                if grid == 1:
+            
+            #for player with O
+            for round in range(10):
+                grid = self.recv_grid()
+                if grid in [1, 0]:
                     return 1
+                    #end of game
                 elif grid == 2:
                     return 2
-                    #end of game go to queue
+                elif grid == 4:
+                    return 2
+                self.onlineGame.turn = 1
+
                 info = self.send_info()
-                if info:
+                if info == 2:
+                    return 2
+                elif info:
                     return 1
-                
+                self.onlineGame.turn = 0
+
                 grid = self.recv_grid()
-                if grid == 1:
+                if grid in [1, 0]:
                     return 1
+                    #end of game
                 elif grid == 2:
                     return 2
-                    breakimage.png
-                    #end of game go to queue
+                elif grid == 4:
+                    return 2
         except:
             print("Error")
-            self.client.socket()
+            self.close()
+            return 0
         
-    def main_client(self):
+    def run(self):
         self.set_ip_port() #start socket 
-        self.connect() #communicate with server
-        while 1:
+        while True:
+            print('nowa gra')
+            while not self.onlineGame.connecting:
+                pass
+                time.sleep(0.05)
+            self.connect() #communicate with server
+            self.connected = 1
+            self.onlineGame.go_queue()
             go_to_queue = self.game()
             if go_to_queue == 1:
-                self.client.close()
-                break
-            elif go_to_queue == 2:
-                continue
+                print('koniec gry')
+                self.onlineGame.go_endScreen('Opponent left')
+                self.close()
+            elif go_to_queue == 0:
+                return 0
 
+    
+    def close(self):
+        self.connected = 0
+        self.client.shutdown(socket.SHUT_RDWR)
 
 if __name__ == "__main__":
-    client = Client("Kot") #tutaj podaje sie name
+    client = Client("Kot")
     client.main_client()

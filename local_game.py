@@ -33,11 +33,11 @@ class LocalGame:
 
     def init_end_screen(self, winner):
         if winner == 'draw':
-            self.end_layout['winner'] = Button('draw', self.screen, WIDTH16, HEIGHT16, WIDTH23, HEIGHT16, clickable=False)
+            self.end_layout['winner'] = Button('remis', self.screen, WIDTH16, HEIGHT16, WIDTH23, HEIGHT16, clickable=False)
         else:
-            self.end_layout['winner'] = Button('winner: {}'.format(winner), self.screen, WIDTH16, HEIGHT16, WIDTH23, HEIGHT16, clickable=False)
-        self.end_layout['rematch'] = Button('rematch', self.screen, WIDTH16, HEIGHT512, WIDTH23, HEIGHT16, self.rematch)
-        self.end_layout['exit'] = Button('exit', self.screen, WIDTH16, HEIGHT23, WIDTH23, HEIGHT16, self.exit)
+            self.end_layout['winner'] = Button('zwycięża {}'.format(winner), self.screen, WIDTH16, HEIGHT16, WIDTH23, HEIGHT16, clickable=False)
+        self.end_layout['rematch'] = Button('rewanż', self.screen, WIDTH16, HEIGHT512, WIDTH23, HEIGHT16, self.rematch)
+        self.end_layout['exit'] = Button('powrót', self.screen, WIDTH16, HEIGHT23, WIDTH23, HEIGHT16, self.exit)
 
     def update(self):
         pg.display.flip()
@@ -52,12 +52,12 @@ class LocalGame:
             self.draw_end_screen()
 
     def draw_end_screen(self):
-        self.screen.fill('black')
+        self.screen.fill('pink')
         for button in self.end_layout.values():
             button.draw()
 
     def draw_board(self):
-        self.screen.fill('black')
+        self.screen.fill('pink')
         pg.draw.line(self.screen, 'white', (WIDTH13, 0), (WIDTH13, HEIGHT))
         pg.draw.line(self.screen, 'white', (WIDTH23, 0), (WIDTH23, HEIGHT))
         pg.draw.line(self.screen, 'white', (0, HEIGHT13), (WIDTH, HEIGHT13))
@@ -89,6 +89,7 @@ class LocalGame:
 
     def check_events(self):
         for event in pg.event.get():
+            print(event)
             if event.type == pg.QUIT:
                 pg.quit()
                 sys.exit()

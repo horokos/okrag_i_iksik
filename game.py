@@ -26,7 +26,7 @@ class Game:
         self.draw_grid()
 
     def draw_board(self):
-        self.screen.fill('black')
+        self.screen.fill('pink')
         pg.draw.line(self.screen, 'white', (WIDTH13, 0), (WIDTH13, HEIGHT))
         pg.draw.line(self.screen, 'white', (WIDTH23, 0), (WIDTH23, HEIGHT))
         pg.draw.line(self.screen, 'white', (0, HEIGHT13), (WIDTH, HEIGHT13))
@@ -66,7 +66,7 @@ class Game:
     def end(self, gracz):
         self.play = 0
         pg.display.flip()
-        print('Wygrał {0}'.format(gracz))
+        print('Wygrywa {0}'.format(gracz))
         pg.time.delay(2000)
         self.grid = [
             [None, None, None],
